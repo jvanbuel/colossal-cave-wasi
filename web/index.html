@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Colossal Cave Adventure — WASI Preview 3</title>
+		<meta
+			name="description"
+			content="Crowther and Woods' Colossal Cave Adventure, compiled to a WebAssembly component and played in the browser over WASI Preview 3 streams."
+		/>
+		<link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+		<link rel="stylesheet" href="./style.css" />
+	</head>
+	<body>
+		<main class="console">
+			<header class="masthead">
+				<h1>Colossal Cave Adventure</h1>
+				<p class="subtitle">
+					compiled to a WebAssembly component ·
+					<span class="wasi">wasi:cli@0.3.0</span>
+				</p>
+			</header>
+
+			<div
+				class="screen"
+				id="screen"
+				role="log"
+				aria-live="polite"
+				aria-label="Game transcript"
+				tabindex="0"
+			></div>
+
+			<form class="prompt" id="prompt" autocomplete="off">
+				<label class="caret" for="command" aria-label="Command">&rsaquo;</label>
+				<input
+					id="command"
+					name="command"
+					type="text"
+					spellcheck="false"
+					autocapitalize="none"
+					autocorrect="off"
+					disabled
+				/>
+			</form>
+
+			<footer class="status">
+				<span class="light" id="light" data-state="loading"></span>
+				<span id="status-text">Loading component…</span>
+			</footer>
+		</main>
+
+		<script type="module" src="./main.js"></script>
+	</body>
+</html>
