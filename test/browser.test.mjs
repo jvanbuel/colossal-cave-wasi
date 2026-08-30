@@ -122,6 +122,40 @@ assert.ok(
 console.log('ok - a browser without JSPI is told why');
 await bare.close();
 
+/* And what a browser that cannot run main.js at all gets — one too old to
+ * parse it, or a half-deployed site: the same explanation from the plain-ES5
+ * reporter in the page, rather than a blank screen. */
+for (const [what, handler] of [
+	['a script that will not load', (route) => route.abort()],
+	[
+		'a script this browser cannot parse',
+		(route) =>
+			route.fulfill({
+				contentType: 'text/javascript',
+				body: 'class T { #x = 1; static { throw 0 } } await 1;;;(',
+			}),
+	],
+]) {
+	const broken = await browser.newPage();
+	await broken.route('**/main.js', handler);
+	await broken.goto(`http://localhost:${port}/`);
+	await broken
+		.locator('#screen')
+		.filter({ hasText: /This page could not start/ })
+		.first()
+		.waitFor({ timeout: 30_000 })
+		.catch(() => {
+			throw new Error(`expected an explanation for ${what}`);
+		});
+	assert.equal(
+		await broken.locator('#status-text').textContent(),
+		'could not start',
+		'expected the status line to report the failure',
+	);
+	console.log(`ok - ${what} says so instead of going blank`);
+	await broken.close();
+}
+
 const text = await transcript();
 assert.match(text, /brass lamp/, 'expected the well house inventory');
 assert.doesNotMatch(text, /Can't open file/, 'unexpected filesystem failure');

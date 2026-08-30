@@ -49,6 +49,56 @@
 			</footer>
 		</main>
 
+		<script>
+			/*
+			 * main.js is a module, so a browser too old to parse it never runs
+			 * a line of it — and the page would sit there blank with the
+			 * explanation still inside the file that failed to load.  This is
+			 * deliberately plain ES5 so that it runs anywhere, and it reports
+			 * whatever went wrong onto the page itself.
+			 */
+			(function () {
+				var reported = false;
+				function report(detail) {
+					var screen = document.getElementById('screen');
+					/* If the game has already written anything, it started
+					 * fine and this is its own error to report. */
+					if (reported || !screen || screen.textContent !== '') {
+						return;
+					}
+					reported = true;
+					var line = document.createElement('span');
+					line.className = 'notice';
+					line.textContent =
+						'\nThis page could not start.\n\n' +
+						detail +
+						'\n\nIt needs a browser with WebAssembly JavaScript ' +
+						'Promise Integration: a recent Chrome, Edge or ' +
+						'Firefox. Safari does not have it yet.\n';
+					screen.appendChild(line);
+					document.getElementById('light').dataset.state = 'ended';
+					document.getElementById('status-text').textContent =
+						'could not start';
+				}
+				/* Capture, because a script that fails to load fires at the
+				 * element and does not bubble. */
+				window.addEventListener(
+					'error',
+					function (event) {
+						var target = event.target;
+						if (target && target !== window && target.src) {
+							report('Could not load ' + target.src + '.');
+						} else {
+							report(event.message || 'A script failed to run.');
+						}
+					},
+					true,
+				);
+				window.addEventListener('unhandledrejection', function (event) {
+					report(String((event.reason && event.reason.message) || event.reason));
+				});
+			})();
+		</script>
 		<script type="module" src="./main.js"></script>
 	</body>
 </html>
