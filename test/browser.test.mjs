@@ -1,18 +1,21 @@
 /*
  * End-to-end test: load the page in Chromium, play a few turns, and check the
  * game answered.  Run with `make check`.
+ *
+ * SITE_ROOT points it at an assembled site instead of the repository, so
+ * `make check-site` runs exactly this against the tree GitHub Pages gets.
+ * CHROME_PATH overrides the browser, for environments where Playwright's own
+ * download is not the one to use.
  */
 
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { serve } from '../scripts/serve.js';
 
-const CHROME = process.env.CHROME_PATH ?? '/opt/pw-browsers/chromium';
-
-const server = await serve(0);
+const server = await serve(0, process.env.SITE_ROOT);
 const { port } = server.address();
 const browser = await chromium.launch({
-	executablePath: CHROME,
+	...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
 	args: ['--no-sandbox'],
 });
 

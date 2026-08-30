@@ -1,6 +1,7 @@
 node_modules/
 build/
 dist/
+_site/
 # generated from adventure.yaml by make_dungeon.py
 vendor/open-adventure/dungeon.c
 vendor/open-adventure/dungeon.h

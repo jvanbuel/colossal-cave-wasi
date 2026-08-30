@@ -3,7 +3,9 @@
 #
 # make            - component + JS bindings in dist/
 # make play       - play in this terminal (needs Node 24+, for JSPI)
+# make wasmtime   - play in this terminal under wasmtime (needs 46+)
 # make serve      - serve the page on http://localhost:8080
+# make site       - assemble _site/, the tree that goes to GitHub Pages
 # make component  - just build/adventure.component.wasm
 # make native     - a host build of the same sources, for comparison
 # make check      - run the end-to-end tests, in Chromium and in the terminal
@@ -18,8 +20,12 @@ SHIM     = src/wasi-shim
 BUILD    = build
 DIST     = dist
 JCO      = node_modules/.bin/jco
+SITE     = _site
 # Node 24+ is needed to *run* the bindings (JSPI); any Node can transpile them.
-NODE    ?= node
+NODE     ?= node
+# wasmtime 46+ runs the component as-is; 45 and earlier speak an older draft
+# of wasi:cli@0.3.0.
+WASMTIME ?= wasmtime
 
 VERSION  = $(shell sed -n <$(GAME)/NEWS.adoc '/^[0-9]/s/:.*//p' | head -1)
 
@@ -41,7 +47,8 @@ LDFLAGS += -lwasi-emulated-signal
 
 COMPONENT = $(BUILD)/adventure.component.wasm
 
-.PHONY: all bindings component native check check-browser check-cli clean play serve
+.PHONY: all bindings component native check check-browser check-cli check-site \
+        clean play serve site wasmtime
 
 all: bindings
 
@@ -103,8 +110,23 @@ $(BUILD)/advent: $(SRCS) $(GAME)/dungeon.h Makefile | $(BUILD)
 play: bindings
 	$(NODE) cli/adventure.js
 
+wasmtime: component
+	$(WASMTIME) run $(COMPONENT)
+
 serve: bindings
 	$(NODE) scripts/serve.js
+
+# ---------------------------------------------------------------------- site
+#
+# The page pulls dist/ and host/ from alongside itself, so the published tree
+# keeps the repository's shape and the root is a redirect into web/.  That way
+# the deployed layout is the one the tests already run against.
+
+site: bindings
+	rm -rf $(SITE)
+	mkdir -p $(SITE)
+	cp -r web dist host $(SITE)/
+	cp scripts/site-index.html $(SITE)/index.html
 
 # -------------------------------------------------------------------- check
 
@@ -117,6 +139,10 @@ check-browser: bindings
 check-cli: bindings
 	$(NODE) test/cli.test.mjs
 
+# The same browser test, against the tree that gets published.
+check-site: site
+	SITE_ROOT=$(SITE) node test/browser.test.mjs
+
 clean:
-	rm -rf $(BUILD) $(DIST)
+	rm -rf $(BUILD) $(DIST) $(SITE)
 	rm -f $(GAME)/dungeon.c $(GAME)/dungeon.h

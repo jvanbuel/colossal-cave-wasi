@@ -5,8 +5,11 @@ component and played over **WASI Preview 3** — the version of WASI where
 standard I/O is a pair of component-model `stream<u8>` values rather than
 `fd_read`/`fd_write` on descriptors 0 and 1.
 
-One component, three ways to play it: in a browser tab, in your terminal
-under Node, or under any host that speaks WASI 0.3.
+One component, three ways to play it: in a browser tab, in your terminal under
+Node, or under any host that speaks WASI 0.3.  Once GitHub Pages is switched
+on for this repository (Settings → Pages → Source: GitHub Actions), every push
+to `main` publishes the browser build to
+`https://jvanbuel.github.io/colossal-cave-wasi/`.
 
 The interesting part is what *isn't* here.  A C program that blocks on a line
 of input has always been the awkward case for the browser: the usual answers
@@ -84,23 +87,44 @@ node cli/adventure.js             # or straight, once dist/ is built
 ```
 
 **In a terminal, without Node.**  The component is a plain WASI 0.3 command,
-so any host that speaks Preview 3 can run it — no JS involved:
+so any host that speaks Preview 3 can run it — no JavaScript involved:
 
 ```sh
+make wasmtime                                  # or, by hand:
 wasmtime run build/adventure.component.wasm
 ```
+
+Needs wasmtime 46 or newer, which takes it as it is.  45 wants
+`-W component-model-async` and still rejects it; 43 and earlier speak an
+older draft of `wasi:cli@0.3.0` and fail on `get-arguments`.
 
 ## Tests
 
 ```sh
 make check                        # both hosts
 make check NODE=/path/to/node24   # ...including the terminal one
+make check-site                   # the browser one, against the published tree
 make native                       # the same sources as a host binary
 ```
 
 `make check` plays a few turns of the game in headless Chromium and again
 through `cli/adventure.js` as a child process.  The terminal test skips itself,
-loudly, on a Node without JSPI.
+loudly, on a Node without JSPI.  Set `CHROME_PATH` if Playwright should use a
+browser other than its own.
+
+## Publishing
+
+`make site` assembles `_site/`: the repository's own `web/`, `dist/` and
+`host/`, plus a root `index.html` that redirects into `web/`.  Keeping the
+shape means the published tree is the one the tests already run against —
+`make check-site` is the browser test pointed at `_site` — rather than a
+rearranged copy that could break in ways nothing exercises.
+
+`.github/workflows/pages.yml` builds that on every push to `main`, plays the
+game in a real browser before publishing anything, and deploys.  It needs
+Pages switched on once, by hand: **Settings → Pages → Build and deployment →
+Source: GitHub Actions**.  Until then the workflow runs and fails at the
+deploy step.
 
 ## How it fits together
 
@@ -169,8 +193,9 @@ host/                    the WASI 0.3 host: streams, clocks, exit, terminals
 web/                     the page: terminal widget, styles, boot
 cli/adventure.js         the terminal host
 dist/                    generated: the transpiled component
+_site/                   generated: the tree published to GitHub Pages
 test/                    plays the game in Chromium, and in a terminal
-scripts/serve.js         static server for local play
+scripts/serve.js         static server for local play and for the tests
 ```
 
 ## Licences
