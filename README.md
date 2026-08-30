@@ -69,9 +69,12 @@ If wasi-sdk is somewhere else, pass it: `make WASI_SDK=/path/to/wasi-sdk-34.0`.
 
 ## Play
 
-**In a browser.**  Needs JSPI: Chrome or Edge 137+, or Firefox with
-`javascript.options.wasm_js_promise_integration` set.  The page says so
-plainly if it is missing.
+**In a browser.**  Needs JSPI — `WebAssembly.Suspending`.  Tested against
+Chromium 141 and Firefox 153, both of which have it switched on by default,
+with no flags and no `about:config` visit.  A browser without it gets an
+explanation rather than a stack trace: the page checks before it loads the
+bindings.  Safari is untested here; JavaScriptCore had not shipped JSPI as of
+writing.
 
 ```sh
 make serve               # http://localhost:8080
@@ -107,10 +110,13 @@ make check-site                   # the browser one, against the published tree
 make native                       # the same sources as a host binary
 ```
 
-`make check` plays a few turns of the game in headless Chromium and again
-through `cli/adventure.js` as a child process.  The terminal test skips itself,
-loudly, on a Node without JSPI.  Set `CHROME_PATH` if Playwright should use a
-browser other than its own.
+`make check` plays a few turns of the game in a headless browser and again
+through `cli/adventure.js` as a child process, and checks that a browser
+without JSPI is told why rather than left staring at a dead page.  It runs
+Chromium by default; `make check-browser BROWSER=firefox` runs the same
+against Firefox, and CI runs both.  The terminal test skips itself, loudly, on
+a Node without JSPI.  Set `CHROME_PATH` if Playwright should use a Chromium
+other than its own.
 
 ## Publishing
 

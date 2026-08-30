@@ -26,6 +26,8 @@ NODE     ?= node
 # wasmtime 46+ runs the component as-is; 45 and earlier speak an older draft
 # of wasi:cli@0.3.0.
 WASMTIME ?= wasmtime
+# Which Playwright engine the browser test drives: chromium or firefox.
+BROWSER  ?= chromium
 
 VERSION  = $(shell sed -n <$(GAME)/NEWS.adoc '/^[0-9]/s/:.*//p' | head -1)
 
@@ -132,16 +134,17 @@ site: bindings
 
 check: check-browser check-cli
 
-# Playwright drives Chromium, so this one runs on any Node.
+# Playwright drives the browser, so this one runs on any Node.
+# `make check-browser BROWSER=firefox` to check the other engine.
 check-browser: bindings
-	node test/browser.test.mjs
+	BROWSER=$(BROWSER) node test/browser.test.mjs
 
 check-cli: bindings
 	$(NODE) test/cli.test.mjs
 
 # The same browser test, against the tree that gets published.
 check-site: site
-	SITE_ROOT=$(SITE) node test/browser.test.mjs
+	SITE_ROOT=$(SITE) BROWSER=$(BROWSER) node test/browser.test.mjs
 
 clean:
 	rm -rf $(BUILD) $(DIST) $(SITE)

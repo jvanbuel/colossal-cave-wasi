@@ -4,20 +4,25 @@
  *
  * SITE_ROOT points it at an assembled site instead of the repository, so
  * `make check-site` runs exactly this against the tree GitHub Pages gets.
- * CHROME_PATH overrides the browser, for environments where Playwright's own
- * download is not the one to use.
+ * BROWSER picks the engine (chromium, firefox, webkit); CHROME_PATH overrides
+ * the Chromium binary, for environments where Playwright's own download is not
+ * the one to use.
  */
 
 import assert from 'node:assert/strict';
-import { chromium } from 'playwright';
+import * as playwright from 'playwright';
 import { serve } from '../scripts/serve.js';
 
+const ENGINE = process.env.BROWSER ?? 'chromium';
 const server = await serve(0, process.env.SITE_ROOT);
 const { port } = server.address();
-const browser = await chromium.launch({
-	...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
-	args: ['--no-sandbox'],
+const browser = await playwright[ENGINE].launch({
+	...(process.env.CHROME_PATH && ENGINE === 'chromium'
+		? { executablePath: process.env.CHROME_PATH }
+		: {}),
+	...(ENGINE === 'chromium' ? { args: ['--no-sandbox'] } : {}),
 });
+console.log(`# ${ENGINE} ${browser.version()}`);
 
 let failures = 0;
 const page = await browser.newPage();
@@ -91,6 +96,31 @@ await page.waitForFunction(
 	{ timeout: 30_000 },
 );
 console.log('ok - the component exited cleanly');
+
+/* What a browser without JSPI gets: an explanation, not a stack trace.  The
+ * page checks before it touches the bindings, so remove the constructor and
+ * the check should fire. */
+const bare = await browser.newPage();
+await bare.addInitScript(() => {
+	delete WebAssembly.Suspending;
+});
+await bare.goto(`http://localhost:${port}/`);
+await bare
+	.locator('#screen')
+	.filter({ hasText: /no JavaScript Promise Integration/ })
+	.first()
+	.waitFor({ timeout: 30_000 });
+assert.equal(
+	await bare.locator('#light').getAttribute('data-state'),
+	'ended',
+	'expected the status light to show an unsupported browser',
+);
+assert.ok(
+	await bare.locator('#command').isDisabled(),
+	'expected the input to stay disabled without JSPI',
+);
+console.log('ok - a browser without JSPI is told why');
+await bare.close();
 
 const text = await transcript();
 assert.match(text, /brass lamp/, 'expected the well house inventory');

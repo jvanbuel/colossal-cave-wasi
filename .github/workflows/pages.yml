@@ -61,11 +61,14 @@ jobs:
       - name: Build
         run: make site WASI_SDK="$HOME/wasi-sdk-$WASI_SDK_VERSION-x86_64-linux"
 
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install browsers
+        run: npx playwright install --with-deps chromium firefox
 
       - name: Play the game, in the browser and in the terminal
         run: make check
+
+      - name: Play the game in Firefox too
+        run: make check-browser BROWSER=firefox
 
       - name: Play the game in the tree that is about to be published
         run: make check-site

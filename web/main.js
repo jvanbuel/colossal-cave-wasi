@@ -14,10 +14,12 @@ function requireJspi() {
 	}
 	terminal.setStatus('unsupported browser', 'ended');
 	terminal.write(
-		'This build needs JavaScript Promise Integration (JSPI) to let the ' +
-			'component park on a read of stdin without blocking the page.\n\n' +
-			'JSPI ships in Chrome and Edge 137 and later. In Firefox, enable ' +
-			'javascript.options.wasm_js_promise_integration in about:config.\n',
+		'This browser has no JavaScript Promise Integration — the ' +
+			'WebAssembly.Suspending constructor is missing.\n\n' +
+			'It is what lets the game stop and wait for a command without ' +
+			'freezing the page, so there is no playing without it. Recent ' +
+			'versions of Chrome, Edge and Firefox have it switched on; Safari ' +
+			'does not have it yet.\n',
 		'notice',
 	);
 	return false;
