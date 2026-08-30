@@ -38,10 +38,14 @@ page.on('console', (msg) => {
 });
 
 const transcript = () => page.locator('#screen').innerText();
+/* The status light, not the input, says whether the game is waiting: the
+ * input stays enabled so that typing ahead works. */
 const waitForPrompt = () =>
-	page.waitForFunction(() => !document.getElementById('command').disabled, null, {
-		timeout: 30_000,
-	});
+	page.waitForFunction(
+		() => document.getElementById('light').dataset.state === 'waiting',
+		null,
+		{ timeout: 30_000 },
+	);
 
 async function command(text) {
 	await waitForPrompt();
@@ -80,6 +84,17 @@ await command('take lamp');
 await command('plugh');
 await expectOutput(/Foof/, 'the magic word working');
 
+/* Typing ahead is the terminal's job: two commands with no wait between them
+ * should both land, in order, because the session queues whatever arrives
+ * before the game asks for it. */
+await waitForPrompt();
+await page.fill('#command', 'inventory');
+await page.press('#command', 'Enter');
+await page.fill('#command', 'score');
+await page.press('#command', 'Enter');
+await expectOutput(/Brass lantern/, 'the first of two commands typed ahead');
+await expectOutput(/You have garnered/, 'the second of two commands typed ahead');
+
 /* SAVE/RESUME are compiled out for the browser; the game should say so
  * rather than fail on a filesystem that isn't there. */
 await command('suspend');
@@ -117,7 +132,7 @@ assert.equal(
 );
 assert.ok(
 	await bare.locator('#command').isDisabled(),
-	'expected the input to stay disabled without JSPI',
+	'expected the input to stay disabled when there is no game to type at',
 );
 console.log('ok - a browser without JSPI is told why');
 await bare.close();

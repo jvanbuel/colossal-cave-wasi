@@ -71,10 +71,15 @@ If wasi-sdk is somewhere else, pass it: `make WASI_SDK=/path/to/wasi-sdk-34.0`.
 
 **In a browser.**  Needs JSPI — `WebAssembly.Suspending`.  Tested against
 Chromium 141 and Firefox 153, both of which have it switched on by default,
-with no flags and no `about:config` visit.  A browser without it gets an
-explanation rather than a stack trace: the page checks before it loads the
-bindings.  Safari is untested here; JavaScriptCore had not shipped JSPI as of
-writing.
+with no flags and no `about:config` visit.  Android Chrome plays fine; the
+page keeps its input live between turns so the on-screen keyboard stays put.
+
+Safari does not have JSPI, which also rules out **every browser on iOS**:
+Chrome and Firefox there are Safari's engine in a different wrapper, so
+switching browser on a phone cannot help.  A browser without it gets an
+explanation rather than a stack trace — and if it is too old to even parse
+the page's modules, a plain ES5 reporter in `index.html` says so rather than
+leaving the screen blank.
 
 ```sh
 make serve               # http://localhost:8080
