@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Colossal Cave Adventure compiled to a WebAssembly component and played in the browser",
+  "description": "Colossal Cave Adventure compiled to a WebAssembly component, played in the browser or in a terminal over WASI Preview 3",
   "scripts": {
     "build": "make",
+    "play": "make play",
     "serve": "make serve",
     "test": "make check"
   },
@@ -13,5 +14,8 @@
     "@bytecodealliance/jco": "^1.32.1",
     "playwright": "^1.62.1"
   },
-  "license": "BSD-2-Clause"
+  "license": "BSD-2-Clause",
+  "bin": {
+    "adventure": "cli/adventure.js"
+  }
 }

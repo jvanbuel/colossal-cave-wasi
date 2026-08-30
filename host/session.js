@@ -1,10 +1,13 @@
 /*
- * The bridge between the DOM and the component's WASI Preview 3 streams.
+ * The bridge between a terminal — the page's, or the one the process was
+ * started from — and the component's WASI Preview 3 streams.
  *
- * A `Session` owns one run of the game.  The WASI interface modules in this
- * directory are stateless adapters over whichever session is current: jco's
- * generated bindings import them statically, so they cannot be handed a
- * session directly.
+ * A `Session` owns one run of the game.  Nothing in this directory knows
+ * whether it is running in a browser or under Node: `web/main.js` and
+ * `cli/adventure.js` each build a session over their own terminal, and the
+ * WASI interface modules here are stateless adapters over whichever session
+ * is current.  (Current, rather than passed in, because jco's generated
+ * bindings import these modules statically.)
  */
 
 /** @type {Session | null} */
@@ -53,6 +56,10 @@ export class Session {
 	 * chunks, and a stateful decoder stitches it back together. */
 	#decoders = new Map();
 	#blocked = false;
+	/** Promises for the output streams the adapters are draining. */
+	#outputs = [];
+	/** Counts output chunks, so `flushed()` can tell when they stop. */
+	#received = 0;
 
 	/**
 	 * @param {object} handlers
@@ -77,10 +84,15 @@ export class Session {
 
 	/** Feed raw text to the game's stdin. */
 	send(text) {
-		if (this.#inputClosed) {
+		this.sendBytes(this.#encoder.encode(text));
+	}
+
+	/** Feed raw bytes to the game's stdin, as a terminal would. */
+	sendBytes(bytes) {
+		if (this.#inputClosed || bytes.length === 0) {
 			return;
 		}
-		this.#pending.push(this.#encoder.encode(text));
+		this.#pending.push(bytes);
 		this.#wake();
 	}
 
@@ -138,8 +150,37 @@ export class Session {
 		return { chunks: chunks(), ended: ended.promise };
 	}
 
+	/**
+	 * Register an output stream the adapters are draining.  The component
+	 * can still have bytes in flight when `run` returns — the game's last
+	 * words, usually — so a host that is about to tear down (a CLI on its
+	 * way to process.exit) waits for these first.
+	 */
+	trackOutput(drained) {
+		this.#outputs.push(drained);
+		return drained;
+	}
+
+	/** Settles once the component has no more output to hand over. */
+	async flushed() {
+		/* The tidy case: every stream the adapters are draining closes. */
+		const closed = Promise.all(this.#outputs);
+		/* But a component that leaves through wasi:cli/exit — which is what
+		 * QUIT does — never closes them, so also stop once two turns of the
+		 * event loop go by without a byte arriving. */
+		const quiet = (async () => {
+			for (let seen = -1; seen !== this.#received; ) {
+				seen = this.#received;
+				await new Promise((resume) => setTimeout(resume));
+				await new Promise((resume) => setTimeout(resume));
+			}
+		})();
+		await Promise.race([closed, quiet]);
+	}
+
 	/** Called by the stdout/stderr adapters for each chunk the game writes. */
 	receive(bytes, stream) {
+		this.#received++;
 		let decoder = this.#decoders.get(stream);
 		if (decoder === undefined) {
 			decoder = new TextDecoder('utf-8');

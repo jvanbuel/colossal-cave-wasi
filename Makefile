@@ -1,10 +1,12 @@
 # Build Colossal Cave Adventure as a WASI Preview 3 component and transpile it
-# for the browser.
+# for the browser and for the terminal.
 #
-# make            - component + browser bundle in web/vendor/adventure
+# make            - component + JS bindings in dist/
+# make play       - play in this terminal (needs Node 24+, for JSPI)
+# make serve      - serve the page on http://localhost:8080
 # make component  - just build/adventure.component.wasm
 # make native     - a host build of the same sources, for comparison
-# make check      - run the browser end-to-end test
+# make check      - run the end-to-end tests, in Chromium and in the terminal
 # make clean
 
 WASI_SDK ?= /opt/wasi-sdk-34.0-x86_64-linux
@@ -14,8 +16,10 @@ TARGET   ?= wasm32-wasip3
 GAME     = vendor/open-adventure
 SHIM     = src/wasi-shim
 BUILD    = build
-DIST     = web/vendor/adventure
+DIST     = dist
 JCO      = node_modules/.bin/jco
+# Node 24+ is needed to *run* the bindings (JSPI); any Node can transpile them.
+NODE    ?= node
 
 VERSION  = $(shell sed -n <$(GAME)/NEWS.adoc '/^[0-9]/s/:.*//p' | head -1)
 
@@ -28,7 +32,7 @@ SRCS     = $(GAME)/main.c $(GAME)/init.c $(GAME)/actions.c $(GAME)/score.c \
 # turns signal() into a stub so main.c's --logfile handler still compiles.
 # -DADVENT_NOSAVE turns SAVE/RESUME into the game's own "Save and resume are
 # disabled." message.  They go through fopen(), and a browser has no
-# filesystem to put a save file on; see web/host/wasi-filesystem.js.
+# filesystem to put a save file on; see host/wasi-filesystem.js.
 CFLAGS  += -std=c99 -O2 -D_DEFAULT_SOURCE -DVERSION=\"$(VERSION)\" \
            -D_WASI_EMULATED_SIGNAL -DADVENT_NOSAVE \
            -I$(SHIM) -I$(GAME) \
@@ -37,9 +41,9 @@ LDFLAGS += -lwasi-emulated-signal
 
 COMPONENT = $(BUILD)/adventure.component.wasm
 
-.PHONY: all component browser native check clean serve
+.PHONY: all bindings component native check check-browser check-cli clean play serve
 
-all: browser
+all: bindings
 
 # ---------------------------------------------------------------- generated
 
@@ -60,27 +64,27 @@ $(COMPONENT): $(SRCS) $(GAME)/dungeon.h $(GAME)/advent.h Makefile | $(BUILD)
 $(BUILD):
 	mkdir -p $(BUILD)
 
-# ------------------------------------------------------------------ browser
+# ----------------------------------------------------------------- bindings
 
-browser: $(DIST)/adventure.js
+bindings: $(DIST)/adventure.js
 
 $(DIST)/adventure.js: $(COMPONENT) | node_modules
 	rm -rf $(DIST)
 	$(JCO) transpile $(COMPONENT) --name adventure -o $(DIST) \
-		--map 'wasi:cli/stdin@0.3.0=../../host/wasi-cli-io.js#stdin' \
-		--map 'wasi:cli/stdout@0.3.0=../../host/wasi-cli-io.js#stdout' \
-		--map 'wasi:cli/stderr@0.3.0=../../host/wasi-cli-io.js#stderr' \
-		--map 'wasi:cli/environment@0.3.0=../../host/wasi-cli-process.js#environment' \
-		--map 'wasi:cli/exit@0.3.0=../../host/wasi-cli-process.js#exit' \
-		--map 'wasi:cli/terminal-input@0.3.0=../../host/wasi-cli-terminal.js#terminalInput' \
-		--map 'wasi:cli/terminal-output@0.3.0=../../host/wasi-cli-terminal.js#terminalOutput' \
-		--map 'wasi:cli/terminal-stdin@0.3.0=../../host/wasi-cli-terminal.js#terminalStdin' \
-		--map 'wasi:cli/terminal-stdout@0.3.0=../../host/wasi-cli-terminal.js#terminalStdout' \
-		--map 'wasi:cli/terminal-stderr@0.3.0=../../host/wasi-cli-terminal.js#terminalStderr' \
-		--map 'wasi:clocks/monotonic-clock@0.3.0=../../host/wasi-clocks.js#monotonicClock' \
-		--map 'wasi:clocks/system-clock@0.3.0=../../host/wasi-clocks.js#systemClock' \
-		--map 'wasi:filesystem/types@0.3.0=../../host/wasi-filesystem.js#types' \
-		--map 'wasi:filesystem/preopens@0.3.0=../../host/wasi-filesystem.js#preopens'
+		--map 'wasi:cli/stdin@0.3.0=../host/wasi-cli-io.js#stdin' \
+		--map 'wasi:cli/stdout@0.3.0=../host/wasi-cli-io.js#stdout' \
+		--map 'wasi:cli/stderr@0.3.0=../host/wasi-cli-io.js#stderr' \
+		--map 'wasi:cli/environment@0.3.0=../host/wasi-cli-process.js#environment' \
+		--map 'wasi:cli/exit@0.3.0=../host/wasi-cli-process.js#exit' \
+		--map 'wasi:cli/terminal-input@0.3.0=../host/wasi-cli-terminal.js#terminalInput' \
+		--map 'wasi:cli/terminal-output@0.3.0=../host/wasi-cli-terminal.js#terminalOutput' \
+		--map 'wasi:cli/terminal-stdin@0.3.0=../host/wasi-cli-terminal.js#terminalStdin' \
+		--map 'wasi:cli/terminal-stdout@0.3.0=../host/wasi-cli-terminal.js#terminalStdout' \
+		--map 'wasi:cli/terminal-stderr@0.3.0=../host/wasi-cli-terminal.js#terminalStderr' \
+		--map 'wasi:clocks/monotonic-clock@0.3.0=../host/wasi-clocks.js#monotonicClock' \
+		--map 'wasi:clocks/system-clock@0.3.0=../host/wasi-clocks.js#systemClock' \
+		--map 'wasi:filesystem/types@0.3.0=../host/wasi-filesystem.js#types' \
+		--map 'wasi:filesystem/preopens@0.3.0=../host/wasi-filesystem.js#preopens'
 
 node_modules:
 	npm install
@@ -94,13 +98,24 @@ $(BUILD)/advent: $(SRCS) $(GAME)/dungeon.h Makefile | $(BUILD)
 		-I$(SHIM) -I$(GAME) -Wall -Wextra -Wno-unused-parameter \
 		$(SRCS) -o $@
 
+# --------------------------------------------------------------------- play
+
+play: bindings
+	$(NODE) cli/adventure.js
+
+serve: bindings
+	$(NODE) scripts/serve.js
+
 # -------------------------------------------------------------------- check
 
-check: browser
-	node test/play.test.mjs
+check: check-browser check-cli
 
-serve: browser
-	node scripts/serve.js
+# Playwright drives Chromium, so this one runs on any Node.
+check-browser: bindings
+	node test/browser.test.mjs
+
+check-cli: bindings
+	$(NODE) test/cli.test.mjs
 
 clean:
 	rm -rf $(BUILD) $(DIST)

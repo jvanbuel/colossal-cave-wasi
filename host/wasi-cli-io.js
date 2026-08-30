@@ -52,16 +52,16 @@ export const stdin = {
 	},
 };
 
-export const stdout = {
-	writeViaStream(data) {
-		const session = currentSession();
-		return drain(data, (bytes) => session.receive(bytes, 'stdout'));
-	},
-};
+function writer(name) {
+	return {
+		writeViaStream(data) {
+			const session = currentSession();
+			return session.trackOutput(
+				drain(data, (bytes) => session.receive(bytes, name)),
+			);
+		},
+	};
+}
 
-export const stderr = {
-	writeViaStream(data) {
-		const session = currentSession();
-		return drain(data, (bytes) => session.receive(bytes, 'stderr'));
-	},
-};
+export const stdout = writer('stdout');
+export const stderr = writer('stderr');

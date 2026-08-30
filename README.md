@@ -1,9 +1,12 @@
 # colossal-cave-wasi
 
 Crowther and Woods' *Colossal Cave Adventure* compiled to a WebAssembly
-component and played in the browser over **WASI Preview 3** — the version of
-WASI where standard I/O is a pair of component-model `stream<u8>` values
-rather than `fd_read`/`fd_write` on descriptors 0 and 1.
+component and played over **WASI Preview 3** — the version of WASI where
+standard I/O is a pair of component-model `stream<u8>` values rather than
+`fd_read`/`fd_write` on descriptors 0 and 1.
+
+One component, three ways to play it: in a browser tab, in your terminal
+under Node, or under any host that speaks WASI 0.3.
 
 The interesting part is what *isn't* here.  A C program that blocks on a line
 of input has always been the awkward case for the browser: the usual answers
@@ -16,47 +19,88 @@ suspends, control returns to the browser's event loop, and it resumes when a
 no `SharedArrayBuffer` — so no cross-origin isolation headers either.
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│  adventure.component.wasm                                │
-│  open-adventure 1.22, clang --target=wasm32-wasip3       │
-│  imports wasi:cli/{stdin,stdout,stderr}@0.3.0            │
-│  exports wasi:cli/run@0.3.0                              │
-└──────────────────────────────────────────────────────────┘
-                          │  jco transpile
-                          ▼
-┌──────────────────────────────────────────────────────────┐
-│  web/vendor/adventure/adventure.js  (generated bindings)  │
-│  stream<u8>  ->  async iterable of Uint8Array            │
-│  future<T>   ->  Promise                                  │
-│  suspension  ->  WebAssembly.Suspending (JSPI)            │
-└──────────────────────────────────────────────────────────┘
-                          │  --map
-                          ▼
-┌──────────────────────────────────────────────────────────┐
-│  web/host/*.js   the WASI 0.3 host, ~200 lines            │
-│  web/terminal.js DOM transcript + input line              │
-└──────────────────────────────────────────────────────────┘
+          ┌───────────────────────────────────────────────────┐
+          │ build/adventure.component.wasm                    │
+          │ open-adventure 1.22, clang --target=wasm32-wasip3 │
+          │ imports wasi:cli/{stdin,stdout,stderr}@0.3.0      │
+          │ exports wasi:cli/run@0.3.0                        │
+          └───────────────────────────────────────────────────┘
+                    │                                  │
+      jco transpile │                                  │
+                    ▼                                  ▼
+  ┌──────────────────────────────────────┐   ┌─────────────────────┐
+  │ dist/adventure.js                    │   │ wasmtime, or any    │
+  │ stream<u8> -> async iterable         │   │ other WASI 0.3 host │
+  │ future<T>  -> Promise                │   └─────────────────────┘
+  │ suspension -> WebAssembly.Suspending │
+  └──────────────────────────────────────┘
+                    │  --map
+                    ▼
+  ┌───────────────────────────────┐
+  │ host/*.js   the WASI 0.3 host │
+  └───────────────────────────────┘
+           │                        │
+           ▼                        ▼
+  ┌─────────────────┐    ┌──────────────────────┐
+  │ web/terminal.js │    │ cli/adventure.js     │
+  │ DOM transcript  │    │ process.stdin/stdout │
+  └─────────────────┘    └──────────────────────┘
 ```
 
-## Build and play
+`host/` does not know which one it is running under.  A `Session` takes lines
+in and hands output back; the browser fills it from an `<input>` and paints
+into a `<div>`, the CLI fills it from `process.stdin` and writes to
+`process.stdout`, and the WASI interface modules are the same either way.
+
+## Build
 
 Needs [wasi-sdk 34](https://github.com/WebAssembly/wasi-sdk/releases) (for the
-`wasm32-wasip3` sysroot), Node 20+, Python 3 with PyYAML, and a browser with
-JSPI — Chrome or Edge 137+, or Firefox with
-`javascript.options.wasm_js_promise_integration` set.
+`wasm32-wasip3` sysroot), Node 20+, and Python 3 with PyYAML.
 
 ```sh
 npm install
-make                     # component + transpiled bindings
-make serve               # http://localhost:8080
+make                     # component in build/, JS bindings in dist/
 ```
 
 If wasi-sdk is somewhere else, pass it: `make WASI_SDK=/path/to/wasi-sdk-34.0`.
 
+## Play
+
+**In a browser.**  Needs JSPI: Chrome or Edge 137+, or Firefox with
+`javascript.options.wasm_js_promise_integration` set.  The page says so
+plainly if it is missing.
+
 ```sh
-make check               # play through a few turns in headless Chromium
-make native              # the same sources as a host binary, for comparison
+make serve               # http://localhost:8080
 ```
+
+**In a terminal, under Node.**  Needs Node 24+, where JSPI is on by default —
+no flags.
+
+```sh
+make play
+make play NODE=/path/to/node24    # if `node` is older
+node cli/adventure.js             # or straight, once dist/ is built
+```
+
+**In a terminal, without Node.**  The component is a plain WASI 0.3 command,
+so any host that speaks Preview 3 can run it — no JS involved:
+
+```sh
+wasmtime run build/adventure.component.wasm
+```
+
+## Tests
+
+```sh
+make check                        # both hosts
+make check NODE=/path/to/node24   # ...including the terminal one
+make native                       # the same sources as a host binary
+```
+
+`make check` plays a few turns of the game in headless Chromium and again
+through `cli/adventure.js` as a child process.  The terminal test skips itself,
+loudly, on a Node without JSPI.
 
 ## How it fits together
 
@@ -79,10 +123,10 @@ build/adventure.component.wasm` prints the resulting world.
 
 The game's own sources are unmodified.
 
-**The host.**  `web/host/` implements the imported interfaces against browser
-APIs, and the Makefile points jco's `--map` at them instead of
-`@bytecodealliance/preview3-shim` (whose browser build is still stubs).  The
-whole of stdio is two async functions:
+**The host.**  `host/` implements the imported interfaces, and the Makefile
+points jco's `--map` at them instead of `@bytecodealliance/preview3-shim`
+(whose browser build is still stubs).  The whole of stdio is two async
+functions:
 
 ```js
 // wasi:cli/stdin@0.3.0
@@ -94,8 +138,9 @@ readViaStream() {
 ```
 
 `chunks` is an async generator that yields typed input and otherwise awaits a
-promise resolved by the submit handler.  That await is the suspension point:
-`web/host/session.js` is where the game stops and the page keeps running.
+promise — resolved by the page's submit handler, or by a `data` event on
+`process.stdin`.  That await is the suspension point: `host/session.js` is
+where the game stops and the rest of the program keeps running.
 
 ## Known gaps
 
@@ -108,8 +153,8 @@ import that returns a *resource* never delivers the handle to the guest, so
 the first `descriptor.open-at` hands libc a dangling descriptor and the
 component traps in `fclose()`.  The same component saves and resumes correctly
 under `wasmtime run --dir .` (48.0.0), so the gap is in the JS host bindings
-rather than in the component or in wasi-libc.  `web/host/wasi-filesystem.js`
-has the details and is where a browser-backed directory would go.
+rather than in the component or in wasi-libc.  `host/wasi-filesystem.js` has
+the details and is where a browser-backed directory would go.
 
 **Preview 3 is young.**  wasi-sdk 34, jco 1.32.1 and `@bytecodealliance/preview3-shim`
 0.5.0 are all recent, `--async-mode` is still marked experimental in jco, and
@@ -120,10 +165,12 @@ the pinned versions are the ones this was built and tested against.
 ```
 vendor/open-adventure/   upstream game sources (BSD-2-Clause), unmodified
 src/wasi-shim/           readline() and isatty() for the WASI build
-web/host/                the WASI 0.3 host: streams, clocks, exit, terminals
+host/                    the WASI 0.3 host: streams, clocks, exit, terminals
 web/                     the page: terminal widget, styles, boot
-test/play.test.mjs       plays the game in headless Chromium
-scripts/serve.js         static server for web/
+cli/adventure.js         the terminal host
+dist/                    generated: the transpiled component
+test/                    plays the game in Chromium, and in a terminal
+scripts/serve.js         static server for local play
 ```
 
 ## Licences

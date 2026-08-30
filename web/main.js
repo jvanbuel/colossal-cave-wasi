@@ -4,7 +4,7 @@
  */
 
 import { Terminal } from './terminal.js';
-import { ComponentExit, Session, setCurrentSession } from './host/session.js';
+import { ComponentExit, Session, setCurrentSession } from '../host/session.js';
 
 const terminal = new Terminal();
 
@@ -43,7 +43,7 @@ async function main() {
 
 	/* Loaded here rather than at the top of the module so the JSPI check
 	 * runs before the bindings touch WebAssembly.Suspending. */
-	const { run } = await import('./vendor/adventure/adventure.js');
+	const { run } = await import('../dist/adventure.js');
 
 	terminal.setStatus('running', 'running');
 	try {
