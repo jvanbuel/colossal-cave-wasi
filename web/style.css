@@ -1,0 +1,149 @@
+:root {
+	--paper: #12100e;
+	--ink: #d8cfc0;
+	--dim: #7c7266;
+	--accent: #d8a657;
+	--error: #e07a5f;
+	--rule: #2a2622;
+	color-scheme: dark;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	height: 100%;
+	margin: 0;
+}
+
+body {
+	background: var(--paper);
+	color: var(--ink);
+	font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas,
+		"Liberation Mono", monospace;
+	font-size: 15px;
+	line-height: 1.5;
+	display: flex;
+	justify-content: center;
+	padding: clamp(0px, 2vw, 24px);
+}
+
+.console {
+	display: flex;
+	flex-direction: column;
+	width: min(74ch, 100%);
+	height: 100%;
+	gap: 12px;
+}
+
+.masthead {
+	flex: none;
+	border-bottom: 1px solid var(--rule);
+	padding-bottom: 10px;
+}
+
+.masthead h1 {
+	margin: 0;
+	font-size: 1.05rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--accent);
+}
+
+.subtitle {
+	margin: 2px 0 0;
+	font-size: 0.8rem;
+	color: var(--dim);
+}
+
+.wasi {
+	color: var(--ink);
+}
+
+.screen {
+	flex: 1 1 auto;
+	overflow-y: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+	scrollbar-width: thin;
+}
+
+.screen:focus-visible {
+	outline: 1px solid var(--rule);
+	outline-offset: 4px;
+}
+
+.screen .echo {
+	color: var(--accent);
+}
+
+.screen .stderr {
+	color: var(--error);
+}
+
+.screen .notice {
+	color: var(--dim);
+	font-style: italic;
+}
+
+.prompt {
+	flex: none;
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	border-top: 1px solid var(--rule);
+	padding-top: 10px;
+}
+
+.caret {
+	color: var(--accent);
+	user-select: none;
+}
+
+.prompt input {
+	flex: 1;
+	background: none;
+	border: none;
+	color: inherit;
+	font: inherit;
+	padding: 0;
+}
+
+.prompt input:focus {
+	outline: none;
+}
+
+.prompt input:disabled {
+	color: var(--dim);
+}
+
+.status {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 0.75rem;
+	color: var(--dim);
+}
+
+.light {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--dim);
+}
+
+.light[data-state="waiting"] {
+	background: var(--accent);
+}
+
+.light[data-state="running"] {
+	background: #7fa87f;
+}
+
+.light[data-state="ended"] {
+	background: var(--error);
+}

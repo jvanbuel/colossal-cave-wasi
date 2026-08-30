@@ -1,0 +1,17 @@
+{
+  "name": "colossal-cave-wasi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Colossal Cave Adventure compiled to a WebAssembly component and played in the browser",
+  "scripts": {
+    "build": "make",
+    "serve": "make serve",
+    "test": "make check"
+  },
+  "devDependencies": {
+    "@bytecodealliance/jco": "^1.32.1",
+    "playwright": "^1.62.1"
+  },
+  "license": "BSD-2-Clause"
+}
