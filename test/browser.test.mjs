@@ -7,7 +7,9 @@
  * BROWSER picks the browser (chromium, firefox); ENGINE picks the build
  * (preview3, preview1, or unset to let the page choose); CHROME_PATH overrides
  * the Chromium binary, for environments where Playwright's own download is not
- * the one to use.
+ * the one to use.  SLOW_MODULE delays the page's entry module, which is how a
+ * cold CI runner behaves and how the races this file has to survive show up on
+ * a fast machine.
  */
 
 import assert from 'node:assert/strict';
@@ -76,9 +78,31 @@ if (BUILD === 'preview1') {
 		delete WebAssembly.Suspending;
 	});
 }
+if (process.env.SLOW_MODULE) {
+	await page.route('**/main.js', async (route) => {
+		await new Promise((resume) => setTimeout(resume, 1500));
+		await route.continue();
+	});
+}
 await page.goto(`http://localhost:${port}/${BUILD ? `web/?engine=${BUILD}` : ''}`);
+
+/* The masthead starts on a placeholder and is filled in once the page has
+ * chosen a build, so wait for that rather than reading it straight after the
+ * navigation: goto resolves on the redirect page in site mode, and the module
+ * behind it takes as long as the machine takes. */
+const engineLabel = await page
+	.locator('#engine')
+	.filter({ hasNotText: 'choosing' })
+	.first()
+	.textContent({ timeout: 30_000 })
+	.catch(async () => {
+		throw new Error(
+			`the page never named a build; masthead still reads ` +
+				`"${await page.locator('#engine').textContent()}"`,
+		);
+	});
 assert.match(
-	await page.locator('#engine').textContent(),
+	engineLabel,
 	BUILD === 'preview1' ? /asyncify/ : /jspi|asyncify/i,
 	'expected the page to name the build it is running',
 );

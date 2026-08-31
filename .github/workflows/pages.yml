@@ -72,8 +72,10 @@ jobs:
           make check-browser BROWSER=firefox
           make check-preview1 BROWSER=firefox
 
+      # SLOW_MODULE holds the page's entry module back, so the checks that
+      # race against it fail here rather than only on a slow runner.
       - name: Play the game in the tree that is about to be published
-        run: make check-site
+        run: SLOW_MODULE=1 make check-site
 
       - uses: actions/upload-pages-artifact@v3
         with:
