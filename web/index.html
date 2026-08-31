@@ -16,8 +16,8 @@
 			<header class="masthead">
 				<h1>Colossal Cave Adventure</h1>
 				<p class="subtitle">
-					compiled to a WebAssembly component ·
-					<span class="wasi">wasi:cli@0.3.0</span>
+					Crowther and Woods, on WASI ·
+					<span class="wasi" id="engine">choosing a build…</span>
 				</p>
 			</header>
 
@@ -72,10 +72,9 @@
 					line.textContent =
 						'\nThis page could not start.\n\n' +
 						detail +
-						'\n\nIt needs a browser with WebAssembly JavaScript ' +
-						'Promise Integration: a recent Chrome, Edge or ' +
-						'Firefox. Safari does not have it yet, and on an ' +
-						'iPhone or iPad every browser is Safari underneath.\n';
+						'\n\nIt needs WebAssembly and ES modules. Anything ' +
+						'newer than that it can do without: there is a ' +
+						'fallback build for browsers with no JSPI.\n';
 					screen.appendChild(line);
 					document.getElementById('light').dataset.state = 'ended';
 					document.getElementById('status-text').textContent =

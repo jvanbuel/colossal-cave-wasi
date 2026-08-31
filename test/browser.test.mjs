@@ -4,7 +4,8 @@
  *
  * SITE_ROOT points it at an assembled site instead of the repository, so
  * `make check-site` runs exactly this against the tree GitHub Pages gets.
- * BROWSER picks the engine (chromium, firefox, webkit); CHROME_PATH overrides
+ * BROWSER picks the browser (chromium, firefox); ENGINE picks the build
+ * (preview3, preview1, or unset to let the page choose); CHROME_PATH overrides
  * the Chromium binary, for environments where Playwright's own download is not
  * the one to use.
  */
@@ -14,6 +15,9 @@ import * as playwright from 'playwright';
 import { serve } from '../scripts/serve.js';
 
 const ENGINE = process.env.BROWSER ?? 'chromium';
+/* Forcing preview1 also removes JSPI, so the run proves the fallback needs
+ * nothing the browser might have quietly supplied. */
+const BUILD = process.env.ENGINE ?? '';
 const server = await serve(0, process.env.SITE_ROOT);
 const { port } = server.address();
 const browser = await playwright[ENGINE].launch({
@@ -22,7 +26,7 @@ const browser = await playwright[ENGINE].launch({
 		: {}),
 	...(ENGINE === 'chromium' ? { args: ['--no-sandbox'] } : {}),
 });
-console.log(`# ${ENGINE} ${browser.version()}`);
+console.log(`# ${ENGINE} ${browser.version()}${BUILD ? `, ${BUILD}` : ''}`);
 
 let failures = 0;
 const page = await browser.newPage();
@@ -67,7 +71,17 @@ async function expectOutput(pattern, what) {
 	console.log(`ok - ${what}`);
 }
 
-await page.goto(`http://localhost:${port}/`);
+if (BUILD === 'preview1') {
+	await page.addInitScript(() => {
+		delete WebAssembly.Suspending;
+	});
+}
+await page.goto(`http://localhost:${port}/${BUILD ? `web/?engine=${BUILD}` : ''}`);
+assert.match(
+	await page.locator('#engine').textContent(),
+	BUILD === 'preview1' ? /asyncify/ : /jspi|asyncify/i,
+	'expected the page to name the build it is running',
+);
 
 /* The game opens by asking whether you want instructions. */
 await expectOutput(/Welcome to Adventure/, 'the welcome banner');
@@ -110,11 +124,10 @@ await page.waitForFunction(
 	null,
 	{ timeout: 30_000 },
 );
-console.log('ok - the component exited cleanly');
+console.log(`ok - the ${BUILD === 'preview1' ? 'module' : 'component'} exited cleanly`);
 
-/* What a browser without JSPI gets: an explanation, not a stack trace.  The
- * page checks before it touches the bindings, so remove the constructor and
- * the check should fire. */
+/* A browser with no JSPI at all should still play, on the preview1 build,
+ * without being told to go and find another browser. */
 const bare = await browser.newPage();
 await bare.addInitScript(() => {
 	delete WebAssembly.Suspending;
@@ -122,19 +135,15 @@ await bare.addInitScript(() => {
 await bare.goto(`http://localhost:${port}/`);
 await bare
 	.locator('#screen')
-	.filter({ hasText: /no JavaScript Promise Integration/ })
+	.filter({ hasText: /standing at the end of a road|Welcome to Adventure/ })
 	.first()
 	.waitFor({ timeout: 30_000 });
-assert.equal(
-	await bare.locator('#light').getAttribute('data-state'),
-	'ended',
-	'expected the status light to show an unsupported browser',
+assert.match(
+	await bare.locator('#engine').textContent(),
+	/asyncify/,
+	'expected a browser without JSPI to fall back to the preview1 build',
 );
-assert.ok(
-	await bare.locator('#command').isDisabled(),
-	'expected the input to stay disabled when there is no game to type at',
-);
-console.log('ok - a browser without JSPI is told why');
+console.log('ok - a browser without JSPI falls back and plays anyway');
 await bare.close();
 
 /* And what a browser that cannot run main.js at all gets — one too old to

@@ -72,6 +72,14 @@ export class Terminal {
 		}
 	}
 
+	/** Name the build that is actually running, in the masthead. */
+	setEngine(label) {
+		const el = document.getElementById('engine');
+		if (el !== null) {
+			el.textContent = label;
+		}
+	}
+
 	setStatus(text, state) {
 		this.#statusText.textContent = text;
 		this.#light.dataset.state = state;
