@@ -185,22 +185,24 @@ body {
 
 /* Once the keyboard is up there is very little height left, so spend it on
  * the transcript: the masthead shrinks to its title and the status line goes
- * until the keyboard closes again. */
-@media (max-height: 480px) {
-	.console {
-		gap: 8px;
-	}
+ * until the keyboard closes again.
+ *
+ * Keyed off an attribute terminal.js sets from visualViewport, not off a
+ * media query: a query reads the layout viewport, which iOS Safari does not
+ * shrink for the keyboard, so it would never fire where it matters most. */
+:root[data-compact] .console {
+	gap: 8px;
+}
 
-	.masthead {
-		padding-bottom: 6px;
-	}
+:root[data-compact] .masthead {
+	padding-bottom: 6px;
+}
 
-	.masthead h1 {
-		font-size: 0.9rem;
-	}
+:root[data-compact] .masthead h1 {
+	font-size: 0.9rem;
+}
 
-	.subtitle,
-	.status {
-		display: none;
-	}
+:root[data-compact] .subtitle,
+:root[data-compact] .status {
+	display: none;
 }

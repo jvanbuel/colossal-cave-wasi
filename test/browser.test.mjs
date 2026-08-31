@@ -201,6 +201,51 @@ console.log(`ok - the ${BUILD === 'preview1' ? 'module' : 'component'} exited cl
 	await page.setViewportSize(full);
 }
 
+/* iOS Safari shrinks the visual viewport for the keyboard but leaves the
+ * layout viewport alone, so CSS media queries never see it.  Shrinking a
+ * Playwright viewport moves both at once and cannot catch that, so stub the
+ * iOS shape exactly: same window, smaller visualViewport. */
+{
+	const ios = await page.evaluate(() => {
+		Object.defineProperty(window.visualViewport, 'height', {
+			value: 320,
+			configurable: true,
+		});
+		window.visualViewport.dispatchEvent(new Event('resize'));
+		return {
+			layoutHeight: window.innerHeight,
+			visualHeight: window.visualViewport.height,
+			compact: document.documentElement.hasAttribute('data-compact'),
+			statusShown:
+				getComputedStyle(document.querySelector('.status')).display !== 'none',
+			appHeight:
+				document.documentElement.style.getPropertyValue('--app-height'),
+		};
+	});
+
+	assert.ok(
+		ios.layoutHeight > 480,
+		`the layout viewport must stay tall for this to mean anything, got ${ios.layoutHeight}`,
+	);
+	assert.equal(ios.appHeight, '320px', 'expected the app to follow the visual viewport');
+	assert.ok(ios.compact, 'expected compact mode from the visual viewport alone');
+	assert.ok(!ios.statusShown, 'expected the status row to yield on iOS too');
+	console.log('ok - compact mode follows the visual viewport, not a media query');
+
+	/* Put the real getter back rather than reloading: the transcript built up
+	 * so far is what the later checks read. */
+	await page.evaluate(() => {
+		delete window.visualViewport.height;
+		window.visualViewport.dispatchEvent(new Event('resize'));
+	});
+	assert.ok(
+		!(await page.evaluate(() =>
+			document.documentElement.hasAttribute('data-compact'),
+		)),
+		'expected compact mode to lift when the keyboard closes',
+	);
+}
+
 /* A browser with no JSPI at all should still play, on the preview1 build,
  * without being told to go and find another browser. */
 const bare = await browser.newPage();
