@@ -9,6 +9,11 @@ name: Pages
 on:
   push:
     branches: [main]
+  # Run the checks on pull requests too.  Without this the first time
+  # anything runs is after a merge, which is how a broken check-site reached
+  # main and blocked the deploy behind it.
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -16,9 +21,10 @@ permissions:
   pages: write
   id-token: write
 
-# Let a running deploy finish rather than cancelling it half way.
+# Let a running deploy finish rather than cancelling it half way.  Keyed by
+# ref so a pull request's checks do not queue behind main's deploys.
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -83,6 +89,8 @@ jobs:
 
   deploy:
     needs: build
+    # Pull requests get the checks above, but only main is published.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
