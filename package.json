@@ -12,6 +12,7 @@
   },
   "devDependencies": {
     "@bytecodealliance/jco": "^1.32.1",
+    "binaryen": "^130.0.0",
     "playwright": "^1.62.1"
   },
   "license": "BSD-2-Clause",

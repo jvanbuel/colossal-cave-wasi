@@ -15,6 +15,9 @@
 html,
 body {
 	height: 100%;
+	/* The dynamic unit keeps the prompt above the on-screen keyboard rather
+	 * than below the fold; ignored where it is not understood. */
+	height: 100dvh;
 	margin: 0;
 }
 
@@ -118,6 +121,14 @@ body {
 
 .prompt input:disabled {
 	color: var(--dim);
+}
+
+/* iOS zooms the whole page in when it focuses an input set smaller than
+ * 16px, and never zooms back out. */
+@media (pointer: coarse) {
+	.prompt input {
+		font-size: 16px;
+	}
 }
 
 .status {

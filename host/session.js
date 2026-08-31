@@ -115,7 +115,8 @@ export class Session {
 		}
 	}
 
-	/**
+	/* ---- the push side ----
+	 *
 	 * stdin as an async iterable of byte chunks, plus a promise that settles
 	 * when that iterable is exhausted.
 	 *
@@ -137,9 +138,10 @@ export class Session {
 					if (self.#inputClosed) {
 						return;
 					}
-					self.#parked = deferred();
+					const parked = deferred();
+					self.#parked = parked;
 					self.#setBlocked(true);
-					await self.#parked.promise;
+					await parked.promise;
 					self.#setBlocked(false);
 				}
 			} finally {
@@ -148,6 +150,48 @@ export class Session {
 			}
 		}
 		return { chunks: chunks(), ended: ended.promise };
+	}
+
+	/* ---- the pull side ----
+	 *
+	 * Preview 1's fd_read has to be answered with bytes there and then, so
+	 * that host reaches into the queue rather than being handed a stream.
+	 */
+
+	get isInputClosed() {
+		return this.#inputClosed;
+	}
+
+	hasInput() {
+		return this.#pending.length > 0;
+	}
+
+	/** Take up to `max` queued bytes, or null if there are none. */
+	takeInput(max) {
+		if (this.#pending.length === 0 || max === 0) {
+			return null;
+		}
+		const head = this.#pending[0];
+		if (head.length <= max) {
+			return this.#pending.shift();
+		}
+		this.#pending[0] = head.subarray(max);
+		return head.subarray(0, max);
+	}
+
+	/** Settles once there is input to take, or stdin has closed. */
+	async waitForInput() {
+		if (this.#pending.length > 0 || this.#inputClosed) {
+			return;
+		}
+		/* Hold the deferred locally: setBlocked runs the caller's handler,
+		 * which is free to supply input right there and then, and #wake
+		 * clears the field as it resolves. */
+		const parked = deferred();
+		this.#parked = parked;
+		this.#setBlocked(true);
+		await parked.promise;
+		this.#setBlocked(false);
 	}
 
 	/**

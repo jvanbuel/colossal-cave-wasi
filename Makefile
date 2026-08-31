@@ -1,14 +1,14 @@
 # Build Colossal Cave Adventure as a WASI Preview 3 component and transpile it
 # for the browser and for the terminal.
 #
-# make            - component + JS bindings in dist/
-# make play       - play in this terminal (needs Node 24+, for JSPI)
+# make            - both builds in dist/: the component and the preview1 one
+# make play       - play in this terminal
 # make wasmtime   - play in this terminal under wasmtime (needs 46+)
 # make serve      - serve the page on http://localhost:8080
 # make site       - assemble _site/, the tree that goes to GitHub Pages
 # make component  - just build/adventure.component.wasm
 # make native     - a host build of the same sources, for comparison
-# make check      - run the end-to-end tests, in Chromium and in the terminal
+# make check      - run the end-to-end tests: both builds, browser and terminal
 # make clean
 
 WASI_SDK ?= /opt/wasi-sdk-34.0-x86_64-linux
@@ -20,8 +20,8 @@ SHIM     = src/wasi-shim
 BUILD    = build
 DIST     = dist
 JCO      = node_modules/.bin/jco
+WASM_OPT = node_modules/.bin/wasm-opt
 SITE     = _site
-# Node 24+ is needed to *run* the bindings (JSPI); any Node can transpile them.
 NODE     ?= node
 # wasmtime 46+ runs the component as-is; 45 and earlier speak an older draft
 # of wasi:cli@0.3.0.
@@ -49,10 +49,10 @@ LDFLAGS += -lwasi-emulated-signal
 
 COMPONENT = $(BUILD)/adventure.component.wasm
 
-.PHONY: all bindings component native check check-browser check-cli check-site \
-        clean play serve site wasmtime
+.PHONY: all bindings component preview1 native check check-browser check-cli \
+        check-preview1 check-session check-site clean play serve site wasmtime
 
-all: bindings
+all: bindings preview1
 
 # ---------------------------------------------------------------- generated
 
@@ -73,12 +73,31 @@ $(COMPONENT): $(SRCS) $(GAME)/dungeon.h $(GAME)/advent.h Makefile | $(BUILD)
 $(BUILD):
 	mkdir -p $(BUILD)
 
+# ----------------------------------------------------------------- preview1
+#
+# The same sources again, as a plain core module for hosts without JSPI.
+# Asyncify rewrites the module so it can unwind and rewind its own stack, which
+# is how a preview1 fd_read gets to wait for the player.  Only the call path
+# that reaches fd_read is instrumented, so the rewrite costs a few percent
+# rather than the doubling Asyncify is usually blamed for.
+
+preview1: $(DIST)/adventure.p1.wasm
+
+$(BUILD)/adventure.p1.core.wasm: $(SRCS) $(GAME)/dungeon.h $(GAME)/advent.h Makefile | $(BUILD)
+	$(CLANG) --target=wasm32-wasip1 $(CFLAGS) $(SRCS) $(LDFLAGS) -o $@
+
+$(DIST)/adventure.p1.wasm: $(BUILD)/adventure.p1.core.wasm | node_modules
+	mkdir -p $(DIST)
+	$(WASM_OPT) --asyncify \
+		--pass-arg=asyncify-imports@wasi_snapshot_preview1.fd_read \
+		-O2 $< -o $@
+
 # ----------------------------------------------------------------- bindings
 
 bindings: $(DIST)/adventure.js
 
 $(DIST)/adventure.js: $(COMPONENT) | node_modules
-	rm -rf $(DIST)
+	rm -rf $(DIST)/adventure.js $(DIST)/adventure.core.wasm $(DIST)/interfaces
 	$(JCO) transpile $(COMPONENT) --name adventure -o $(DIST) \
 		--map 'wasi:cli/stdin@0.3.0=../host/wasi-cli-io.js#stdin' \
 		--map 'wasi:cli/stdout@0.3.0=../host/wasi-cli-io.js#stdout' \
@@ -109,13 +128,13 @@ $(BUILD)/advent: $(SRCS) $(GAME)/dungeon.h Makefile | $(BUILD)
 
 # --------------------------------------------------------------------- play
 
-play: bindings
+play: all
 	$(NODE) cli/adventure.js
 
 wasmtime: component
 	$(WASMTIME) run $(COMPONENT)
 
-serve: bindings
+serve: all
 	$(NODE) scripts/serve.js
 
 # ---------------------------------------------------------------------- site
@@ -124,7 +143,7 @@ serve: bindings
 # keeps the repository's shape and the root is a redirect into web/.  That way
 # the deployed layout is the one the tests already run against.
 
-site: bindings
+site: all
 	rm -rf $(SITE)
 	mkdir -p $(SITE)
 	cp -r web dist host $(SITE)/
@@ -132,14 +151,22 @@ site: bindings
 
 # -------------------------------------------------------------------- check
 
-check: check-browser check-cli
+# Both builds, in the browser and in the terminal.
+check: check-session check-browser check-preview1 check-cli
 
-# Playwright drives the browser, so this one runs on any Node.
-# `make check-browser BROWSER=firefox` to check the other engine.
-check-browser: bindings
+check-session:
+	$(NODE) test/session.test.mjs
+
+# Playwright drives the browser, so these run on any Node.
+# `make check-browser BROWSER=firefox` to check the other one.
+check-browser: all
 	BROWSER=$(BROWSER) node test/browser.test.mjs
 
-check-cli: bindings
+# The same suite again on the fallback build, with JSPI taken away.
+check-preview1: all
+	BROWSER=$(BROWSER) ENGINE=preview1 node test/browser.test.mjs
+
+check-cli: all
 	$(NODE) test/cli.test.mjs
 
 # The same browser test, against the tree that gets published.

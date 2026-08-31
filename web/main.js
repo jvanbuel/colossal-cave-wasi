@@ -1,69 +1,48 @@
 /*
- * Boot the game: wire a DOM terminal to the component's WASI streams and run
- * it.
+ * Boot the game: wire a DOM terminal to whichever build of the component this
+ * browser can run, and start it.
  */
 
 import { Terminal } from './terminal.js';
-import { ComponentExit, Session, setCurrentSession } from '../host/session.js';
+import { Session } from '../host/session.js';
+import { chooseEngine, start } from '../host/start.js';
 
 const terminal = new Terminal();
 
-function requireJspi() {
-	if (typeof WebAssembly.Suspending === 'function') {
-		return true;
-	}
-	terminal.setStatus('unsupported browser', 'ended');
-	terminal.write(
-		'This browser has no JavaScript Promise Integration — the ' +
-			'WebAssembly.Suspending constructor is missing.\n\n' +
-			'It is what lets the game stop and wait for a command without ' +
-			'freezing the page, so there is no playing without it. Recent ' +
-			'versions of Chrome, Edge and Firefox have it switched on; Safari ' +
-			'does not have it yet.\n',
-		'notice',
-	);
-	return false;
-}
+/* ?engine=preview1 forces the fallback on a browser that could run the
+ * component; the tests use it to exercise both on one machine. */
+const forced = new URLSearchParams(location.search).get('engine');
+const engine = forced === 'preview1' || forced === 'preview3' ? forced : chooseEngine();
+
+const LABELS = {
+	preview3: 'wasi:cli@0.3.0 component · JSPI',
+	preview1: 'wasi_snapshot_preview1 · asyncify',
+};
 
 async function main() {
-	if (!requireJspi()) {
-		return;
-	}
-
 	const session = new Session({
 		onOutput: (text, stream) => terminal.write(text, stream),
+		/* Only the status light tracks this.  Disabling the input while the
+		 * game thinks would drop and re-raise the on-screen keyboard on
+		 * every single turn, and typing ahead of the game is what a terminal
+		 * does anyway — the session queues whatever arrives early. */
 		onBlocked: (blocked) => {
-			terminal.setAcceptingInput(blocked);
 			terminal.setStatus(
 				blocked ? 'waiting for your command' : 'running',
 				blocked ? 'waiting' : 'running',
 			);
 		},
 	});
-	setCurrentSession(session);
 	terminal.onLine = (line) => session.sendLine(line);
 
-	/* Loaded here rather than at the top of the module so the JSPI check
-	 * runs before the bindings touch WebAssembly.Suspending. */
-	const { run } = await import('../dist/adventure.js');
-
+	terminal.setEngine(LABELS[engine]);
 	terminal.setStatus('running', 'running');
-	try {
-		await run.run();
-		finish('the game has ended');
-	} catch (err) {
-		if (err instanceof ComponentExit || err?.exitError === true) {
-			finish(
-				err.code === 0
-					? 'the game has ended'
-					: `the game exited with code ${err.code}`,
-			);
-			return;
-		}
-		finish('the component trapped');
-		terminal.write(`\n${err?.stack ?? err}\n`, 'stderr');
-		throw err;
-	}
+	terminal.setAcceptingInput(true);
+
+	const code = await start(session, { engine });
+	finish(
+		code === 0 ? 'the game has ended' : `the game exited with code ${code}`,
+	);
 }
 
 function finish(message) {
@@ -72,4 +51,8 @@ function finish(message) {
 	terminal.write(`\n[${message} — reload to play again]\n`, 'notice');
 }
 
-main();
+main().catch((err) => {
+	finish('the game stopped');
+	terminal.write(`\n${err?.stack ?? err}\n`, 'stderr');
+	throw err;
+});

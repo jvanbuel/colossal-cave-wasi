@@ -5,8 +5,10 @@ component and played over **WASI Preview 3** — the version of WASI where
 standard I/O is a pair of component-model `stream<u8>` values rather than
 `fd_read`/`fd_write` on descriptors 0 and 1.
 
-One component, three ways to play it: in a browser tab, in your terminal under
-Node, or under any host that speaks WASI 0.3.  Once GitHub Pages is switched
+Two builds of the same C, so there is nothing to opt out of: a **WASI Preview
+3 component** where the browser can drive it, and a **Preview 1 module** driven
+by Asyncify where it cannot — Safari, anything on iOS, older Node.  The page
+picks one and says which it got.  Once GitHub Pages is switched
 on for this repository (Settings → Pages → Source: GitHub Actions), every push
 to `main` publishes the browser build to
 `https://jvanbuel.github.io/colossal-cave-wasi/`.
@@ -22,32 +24,30 @@ suspends, control returns to the browser's event loop, and it resumes when a
 no `SharedArrayBuffer` — so no cross-origin isolation headers either.
 
 ```
-          ┌───────────────────────────────────────────────────┐
-          │ build/adventure.component.wasm                    │
-          │ open-adventure 1.22, clang --target=wasm32-wasip3 │
-          │ imports wasi:cli/{stdin,stdout,stderr}@0.3.0      │
-          │ exports wasi:cli/run@0.3.0                        │
-          └───────────────────────────────────────────────────┘
-                    │                                  │
-      jco transpile │                                  │
-                    ▼                                  ▼
-  ┌──────────────────────────────────────┐   ┌─────────────────────┐
-  │ dist/adventure.js                    │   │ wasmtime, or any    │
-  │ stream<u8> -> async iterable         │   │ other WASI 0.3 host │
-  │ future<T>  -> Promise                │   └─────────────────────┘
-  │ suspension -> WebAssembly.Suspending │
-  └──────────────────────────────────────┘
-                    │  --map
-                    ▼
-  ┌───────────────────────────────┐
-  │ host/*.js   the WASI 0.3 host │
-  └───────────────────────────────┘
-           │                        │
-           ▼                        ▼
-  ┌─────────────────┐    ┌──────────────────────┐
-  │ web/terminal.js │    │ cli/adventure.js     │
-  │ DOM transcript  │    │ process.stdin/stdout │
-  └─────────────────┘    └──────────────────────┘
+              ┌───────────────────────────────────────┐
+              │ vendor/open-adventure + src/wasi-shim │
+              │ one set of C sources                  │
+              └───────────────────────────────────────┘
+                     │                 │
+                     ▼                 ▼
+┌────────────────────────────────┐      ┌──────────────────────────────┐
+│ clang --target=wasm32-wasip3   │      │ clang --target=wasm32-wasip1 │
+│ a component; jco transpile     │      │ wasm-opt --asyncify          │
+│ dist/adventure.js + .core.wasm │      │ dist/adventure.p1.wasm       │
+└────────────────────────────────┘      └──────────────────────────────┘
+                     │                 │
+                     └────────┬────────┘
+                              ▼
+        ┌───────────────────────────────────────────┐
+        │ host/start.js  — JSPI? component : module │
+        │ host/session.js — one queue, both hosts   │
+        └───────────────────────────────────────────┘
+                     │                 │
+                     ▼                 ▼
+        ┌─────────────┐           ┌──────────────────┐
+        │ web/        │           │ cli/adventure.js │
+        │ browser tab │           │ terminal         │
+        └─────────────┘           └──────────────────┘
 ```
 
 `host/` does not know which one it is running under.  A `Session` takes lines
@@ -69,24 +69,32 @@ If wasi-sdk is somewhere else, pass it: `make WASI_SDK=/path/to/wasi-sdk-34.0`.
 
 ## Play
 
-**In a browser.**  Needs JSPI — `WebAssembly.Suspending`.  Tested against
-Chromium 141 and Firefox 153, both of which have it switched on by default,
-with no flags and no `about:config` visit.  A browser without it gets an
-explanation rather than a stack trace: the page checks before it loads the
-bindings.  Safari is untested here; JavaScriptCore had not shipped JSPI as of
-writing.
+**In a browser.**  Where there is JSPI — `WebAssembly.Suspending` — the page
+runs the component build; otherwise it runs the Preview 1 one, which needs
+nothing beyond WebAssembly itself.  Add `?engine=preview1` to force the
+fallback on a browser that could manage either.
+
+Tested on Chromium 141 and Firefox 153, each on both builds, with JSPI removed
+for the fallback runs so nothing can quietly leak through.  Safari and iOS are
+what the fallback is for and are the untested case: Playwright's WebKit will
+not launch here.  Android Chrome plays fine; the page keeps its input live
+between turns so the on-screen keyboard stays put.
+
+If the page cannot start at all — modules that will not load or parse — a
+plain ES5 reporter in `index.html` says so rather than leaving the screen
+blank.
 
 ```sh
 make serve               # http://localhost:8080
 ```
 
-**In a terminal, under Node.**  Needs Node 24+, where JSPI is on by default —
-no flags.
+**In a terminal, under Node.**  Any Node: 24 and up drives the component
+through JSPI, older ones fall back to the Preview 1 build.
 
 ```sh
 make play
-make play NODE=/path/to/node24    # if `node` is older
-node cli/adventure.js             # or straight, once dist/ is built
+node cli/adventure.js                        # once dist/ is built
+ADVENTURE_ENGINE=preview1 node cli/adventure.js   # force the fallback
 ```
 
 **In a terminal, without Node.**  The component is a plain WASI 0.3 command,
@@ -104,19 +112,19 @@ older draft of `wasi:cli@0.3.0` and fail on `get-arguments`.
 ## Tests
 
 ```sh
-make check                        # both hosts
-make check NODE=/path/to/node24   # ...including the terminal one
-make check-site                   # the browser one, against the published tree
+make check                        # everything below
+make check-session                # the queue both hosts share
+make check-browser                # the page, on the build it chooses
+make check-preview1               # the page again, with JSPI taken away
+make check-cli                    # the terminal, on every build this Node runs
+make check-site                   # the page, against the published tree
 make native                       # the same sources as a host binary
 ```
 
-`make check` plays a few turns of the game in a headless browser and again
-through `cli/adventure.js` as a child process, and checks that a browser
-without JSPI is told why rather than left staring at a dead page.  It runs
-Chromium by default; `make check-browser BROWSER=firefox` runs the same
-against Firefox, and CI runs both.  The terminal test skips itself, loudly, on
-a Node without JSPI.  Set `CHROME_PATH` if Playwright should use a Chromium
-other than its own.
+Each of those plays a few turns of the actual game.  `BROWSER=firefox` runs
+the browser ones against Firefox instead, which CI does as well.  The terminal
+test runs whichever builds the Node in front of it can manage, and says which.
+Set `CHROME_PATH` if Playwright should use a Chromium other than its own.
 
 ## Publishing
 
@@ -153,10 +161,10 @@ build/adventure.component.wasm` prints the resulting world.
 
 The game's own sources are unmodified.
 
-**The host.**  `host/` implements the imported interfaces, and the Makefile
-points jco's `--map` at them instead of `@bytecodealliance/preview3-shim`
-(whose browser build is still stubs).  The whole of stdio is two async
-functions:
+**The hosts.**  `host/` implements both sides.  For Preview 3 the Makefile
+points jco's `--map` at these modules instead of
+`@bytecodealliance/preview3-shim` (whose browser build is still stubs), and
+the whole of stdio is two async functions:
 
 ```js
 // wasi:cli/stdin@0.3.0
@@ -171,6 +179,35 @@ readViaStream() {
 promise — resolved by the page's submit handler, or by a `data` event on
 `process.stdin`.  That await is the suspension point: `host/session.js` is
 where the game stops and the rest of the program keeps running.
+
+For Preview 1 there is no suspension to lean on: `fd_read` is an ordinary call
+that has to come back with bytes.  `host/wasi-preview1.js` gets around that
+with Asyncify, which rewrites the module so it can unwind its own call stack
+into linear memory and rewind back into it later.  `fd_read`, finding no
+input, starts an unwind and returns; the unwind propagates out through
+`_start`; the host waits for the player; then it starts a rewind and calls
+`_start` again, and execution reappears inside `fd_read` as though it had
+never left.
+
+Only the call path that reaches `fd_read` is instrumented — that is what
+`--pass-arg=asyncify-imports@wasi_snapshot_preview1.fd_read` buys — so the
+rewrite costs 3% of the module rather than the doubling Asyncify is usually
+blamed for:
+
+| | Preview 3 | Preview 1 |
+|---|---|---|
+| module | 727 KB | 503 KB |
+| bindings | 489 KB of generated JS | 250 lines, hand-written |
+| needs | JSPI | WebAssembly |
+
+Asyncify writes the unwound frames without checking the bounds it was handed,
+so an overflow would quietly corrupt whatever came next.  The deepest unwind
+measured over a long walk through the cave is 332 bytes; the host gives it two
+pages and fails loudly well before that is spent.
+
+Both builds end up talking to the same `Session`, which is why the page and
+the CLI do not know which one they got.  Preview 1 reaches into its input
+queue where Preview 3 iterates it — the same bytes either way.
 
 ## Known gaps
 
@@ -198,7 +235,9 @@ src/wasi-shim/           readline() and isatty() for the WASI build
 host/                    the WASI 0.3 host: streams, clocks, exit, terminals
 web/                     the page: terminal widget, styles, boot
 cli/adventure.js         the terminal host
-dist/                    generated: the transpiled component
+host/wasi-preview1.js    the Asyncify host, for browsers without JSPI
+host/start.js            picks a build and runs it
+dist/                    generated: both builds
 _site/                   generated: the tree published to GitHub Pages
 test/                    plays the game in Chromium, and in a terminal
 scripts/serve.js         static server for local play and for the tests

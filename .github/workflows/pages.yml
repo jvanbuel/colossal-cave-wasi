@@ -67,8 +67,10 @@ jobs:
       - name: Play the game, in the browser and in the terminal
         run: make check
 
-      - name: Play the game in Firefox too
-        run: make check-browser BROWSER=firefox
+      - name: Play the game in Firefox too, on both builds
+        run: |
+          make check-browser BROWSER=firefox
+          make check-preview1 BROWSER=firefox
 
       - name: Play the game in the tree that is about to be published
         run: make check-site
