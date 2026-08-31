@@ -39,6 +39,34 @@ export class Terminal {
 				this.focus();
 			}
 		});
+
+		/* The on-screen keyboard changes the visual viewport but not the
+		 * layout one, so without this the prompt and the last thing the game
+		 * said end up behind the keyboard. */
+		const viewport = window.visualViewport;
+		if (viewport != null) {
+			viewport.addEventListener('resize', () => this.#fitToViewport());
+			viewport.addEventListener('scroll', () => this.#fitToViewport());
+		}
+		window.addEventListener('orientationchange', () => this.#fitToViewport());
+		this.#fitToViewport();
+	}
+
+	#fitToViewport() {
+		const viewport = window.visualViewport;
+		if (viewport != null) {
+			document.documentElement.style.setProperty(
+				'--app-height',
+				`${viewport.height}px`,
+			);
+			/* iOS may still scroll the window to reveal the focused input,
+			 * which shifts the fixed body; put it back. */
+			if (viewport.offsetTop !== 0 || window.scrollY !== 0) {
+				window.scrollTo(0, 0);
+			}
+		}
+		/* Whatever just changed, the newest output is what matters. */
+		this.#scrollToBottom();
 	}
 
 	focus() {

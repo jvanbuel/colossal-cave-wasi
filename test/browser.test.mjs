@@ -150,6 +150,57 @@ await page.waitForFunction(
 );
 console.log(`ok - the ${BUILD === 'preview1' ? 'module' : 'component'} exited cleanly`);
 
+/* On a phone the on-screen keyboard takes half the screen, and what is left
+ * has to hold both the prompt and the last thing the game said.  Chromium's
+ * visual viewport follows the window, so shrinking it stands in for the
+ * keyboard opening. */
+{
+	const full = page.viewportSize();
+
+	/* Everything this needs to know, measured in the page. */
+	const fit = () => ({
+		viewport: window.visualViewport.height,
+		prompt: document.getElementById('prompt').getBoundingClientRect().bottom,
+		/* Distance from the transcript's newest line. */
+		fromNewest: (() => {
+			const el = document.getElementById('screen');
+			return el.scrollHeight - el.scrollTop - el.clientHeight;
+		})(),
+		pageScroll: document.body.scrollHeight - window.innerHeight,
+		statusShown:
+			getComputedStyle(document.querySelector('.status')).display !== 'none',
+	});
+	const settled = (m) =>
+		m.prompt <= m.viewport + 1 &&
+		m.fromNewest <= 2 &&
+		m.pageScroll <= 1 &&
+		!m.statusShown;
+
+	await page.setViewportSize({ width: 390, height: 330 });
+	/* Wait for the layout to have reacted, not merely for the viewport to
+	 * have changed: the page resizes itself from a visualViewport handler, so
+	 * asserting on the resize alone races it. */
+	await page
+		.waitForFunction(
+			([fitSrc, settledSrc]) => {
+				const measure = new Function(`return (${fitSrc})()`);
+				const ok = new Function('m', `return (${settledSrc})(m)`);
+				return ok(measure());
+			},
+			[fit.toString(), settled.toString()],
+			{ timeout: 10_000 },
+		)
+		.catch(async () => {
+			const measured = await page.evaluate(fit);
+			throw new Error(
+				`the keyboard-sized viewport did not settle: ${JSON.stringify(measured)}`,
+			);
+		});
+	console.log('ok - prompt and newest output survive an on-screen keyboard');
+
+	await page.setViewportSize(full);
+}
+
 /* A browser with no JSPI at all should still play, on the preview1 build,
  * without being told to go and find another browser. */
 const bare = await browser.newPage();
