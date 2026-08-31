@@ -5,6 +5,10 @@
 
 const HISTORY_LIMIT = 200;
 
+/* Below this many CSS pixels of usable height, the page gives the transcript
+ * the room the masthead and status line were using. */
+const COMPACT_HEIGHT = 480;
+
 export class Terminal {
 	#screen;
 	#form;
@@ -39,6 +43,39 @@ export class Terminal {
 				this.focus();
 			}
 		});
+
+		/* The on-screen keyboard changes the visual viewport but not the
+		 * layout one, so without this the prompt and the last thing the game
+		 * said end up behind the keyboard. */
+		const viewport = window.visualViewport;
+		if (viewport != null) {
+			viewport.addEventListener('resize', () => this.#fitToViewport());
+			viewport.addEventListener('scroll', () => this.#fitToViewport());
+		}
+		window.addEventListener('orientationchange', () => this.#fitToViewport());
+		this.#fitToViewport();
+	}
+
+	#fitToViewport() {
+		const viewport = window.visualViewport;
+		const root = document.documentElement;
+		const height = viewport?.height ?? window.innerHeight;
+
+		root.style.setProperty('--app-height', `${height}px`);
+		/* Compact mode has to come from the same measurement as the height.
+		 * A `@media (max-height: …)` query would read the *layout* viewport,
+		 * which iOS Safari leaves at full size when the keyboard opens — so
+		 * on the one platform this is for, the query would never fire and the
+		 * chrome would keep space the transcript needs. */
+		root.toggleAttribute('data-compact', height <= COMPACT_HEIGHT);
+
+		/* iOS may still scroll the window to reveal the focused input, which
+		 * shifts the fixed body; put it back. */
+		if ((viewport?.offsetTop ?? 0) !== 0 || window.scrollY !== 0) {
+			window.scrollTo(0, 0);
+		}
+		/* Whatever just changed, the newest output is what matters. */
+		this.#scrollToBottom();
 	}
 
 	focus() {

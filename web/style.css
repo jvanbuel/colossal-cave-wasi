@@ -12,16 +12,29 @@
 	box-sizing: border-box;
 }
 
+html {
+	/* How tall the app should be.  100dvh is only a starting point: it tracks
+	 * the browser's own chrome but not the on-screen keyboard, which on a
+	 * phone covers half the screen and takes the prompt and the newest output
+	 * with it.  terminal.js overwrites this from visualViewport, which does
+	 * account for the keyboard. */
+	--app-height: 100dvh;
+}
+
 html,
 body {
-	height: 100%;
-	/* The dynamic unit keeps the prompt above the on-screen keyboard rather
-	 * than below the fold; ignored where it is not understood. */
-	height: 100dvh;
 	margin: 0;
 }
 
 body {
+	/* Fixed, so the browser cannot scroll the page itself out from under the
+	 * prompt when the keyboard opens; the transcript does all the scrolling. */
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: var(--app-height);
+	overflow: hidden;
 	background: var(--paper);
 	color: var(--ink);
 	font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas,
@@ -123,13 +136,24 @@ body {
 	color: var(--dim);
 }
 
-/* iOS zooms the whole page in when it focuses an input set smaller than
- * 16px, and never zooms back out. */
 @media (pointer: coarse) {
+	/* iOS zooms the whole page in when it focuses an input set smaller than
+	 * 16px, and never zooms back out. */
 	.prompt input {
 		font-size: 16px;
 	}
+
+	/* A thumb needs something to aim at: on a touch screen the prompt is a
+	 * field rather than a rule with text on it. */
+	.prompt {
+		align-items: center;
+		border: 1px solid var(--rule);
+		border-radius: 8px;
+		min-height: 44px;
+		padding: 8px 12px;
+	}
 }
+
 
 .status {
 	flex: none;
@@ -157,4 +181,28 @@ body {
 
 .light[data-state="ended"] {
 	background: var(--error);
+}
+
+/* Once the keyboard is up there is very little height left, so spend it on
+ * the transcript: the masthead shrinks to its title and the status line goes
+ * until the keyboard closes again.
+ *
+ * Keyed off an attribute terminal.js sets from visualViewport, not off a
+ * media query: a query reads the layout viewport, which iOS Safari does not
+ * shrink for the keyboard, so it would never fire where it matters most. */
+:root[data-compact] .console {
+	gap: 8px;
+}
+
+:root[data-compact] .masthead {
+	padding-bottom: 6px;
+}
+
+:root[data-compact] .masthead h1 {
+	font-size: 0.9rem;
+}
+
+:root[data-compact] .subtitle,
+:root[data-compact] .status {
+	display: none;
 }
