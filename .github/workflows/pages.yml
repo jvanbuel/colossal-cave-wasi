@@ -9,6 +9,11 @@ name: Pages
 on:
   push:
     branches: [main]
+  # Run the checks on pull requests too.  Without this the first time
+  # anything runs is after a merge, which is how a broken check-site reached
+  # main and blocked the deploy behind it.
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -16,9 +21,10 @@ permissions:
   pages: write
   id-token: write
 
-# Let a running deploy finish rather than cancelling it half way.
+# Let a running deploy finish rather than cancelling it half way.  Keyed by
+# ref so a pull request's checks do not queue behind main's deploys.
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -72,8 +78,10 @@ jobs:
           make check-browser BROWSER=firefox
           make check-preview1 BROWSER=firefox
 
+      # SLOW_MODULE holds the page's entry module back, so the checks that
+      # race against it fail here rather than only on a slow runner.
       - name: Play the game in the tree that is about to be published
-        run: make check-site
+        run: SLOW_MODULE=1 make check-site
 
       - uses: actions/upload-pages-artifact@v3
         with:
@@ -81,6 +89,8 @@ jobs:
 
   deploy:
     needs: build
+    # Pull requests get the checks above, but only main is published.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
